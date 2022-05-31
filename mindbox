@@ -1,102 +1,50 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: web-server
-  namespace: web
+  name: deployment-example
 spec:
-  selector:
-    matchLabels:
-      app: web-store
-  replicas: 4
+  replicas: 
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+  selector:
+    matchLabels:
+      application: deployment-example
   template:
     metadata:
       labels:
-        app: web-store
-    spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: #Ключ нодов ( ноды предварительно надо Label поставить)
-              operator: In
-              values:
-              - #Значение ключа
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 1
-            preference:
-              matchExpressions:
-              - key: another-node-label-key
-              operator: In
-              values:
-              - another-node-label-value
-      tolerations:                           # Чтобы другие поды не разворачивались на эти 4 ноды ( также надо taint нодов)
-      - key: "key1"
-        operator: "Equal"
-        value: "value1"
-        effect: "NoSchedule" 
+        application: deployment-example
+    spec: 
       containers:
-      - name: web-app
-        image: nginx:1.21-alpine
-# Определения ресурсов для контейнера
-        resources:
-          limits:
-            cpu: "1"
-            memory: 128Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-
+      - name: deployment-example-pod
+        image: image-of-deployment
         ports:
-        - containerPort: 8080
-          hostPort: 8080
-          name: http
-          protocol: TCP
-        - containerPort: 8443
-          hostPort: 8443
-          name: https
-          protocol: TCP
-#Kubelet отправит readness пробу через 5 сек и liveness пробу через 15 сек. 
-        readinessProbe:
-          tcpSocket:
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        livenessProbe:
-          tcpSocket:
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 20
-      initContainers:            # Запуск инит контейнера для обнаружения сервиса перед запуском основного web-app
-      - name: init-myservice
-        image: busybox:1.28
-        command: ['sh', '-c', "until nslookup webservice.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for webservice; sleep 5; done"]
+          - containerPort: 80
+        resources:
+          requests:
+            cpu: "0.1"
+            memory: 128Mi
+          limits:
+            cpu: "0.5"
+            memory: 256Mi
 
-
-
-
-# Для автомаштабирования можно использовать императивно: 
-kubectl autoscale deployment web-server --cpu-percent=80 --min=1 --max=10
-
-При 80% насыщения CPU добавляется один под с веб-сервером и при уменьшении с 80% убирается под.
-
-Также можно декларативно добавить в манифест:
-
-apiVersion: autoscaling/v1
+---
+apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: web-server-scale
+  name: autoscaler
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: web-server
+    name: deployment-example
   minReplicas: 1
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+            
